@@ -172,6 +172,7 @@ module FastlaneCI
         sha: self.sha
       )
       save_build_status!
+      checkout_sha
     end
 
     private

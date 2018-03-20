@@ -137,7 +137,9 @@ module FastlaneCI
                 begin
                   repo.add(all: true)
                   repo.commit("Sync changes")
-                  git.push("origin", branch: "master", force: true)
+                  retry_on_fail proc { 
+                    git.push("origin", branch: "master", force: true)
+                  }
                 rescue StandardError => ex
                   logger.error("Error commiting changes to ci-config repo")
                   logger.error(ex)
@@ -145,24 +147,34 @@ module FastlaneCI
               end
             else
               logger.debug("Resetting #{self.git_config.git_url}")
-              self.git.reset_hard
+              retry_on_fail proc { 
+                self.git.reset_hard
+              }
 
               logger.debug("Pulling #{self.git_config.git_url}")
-              self.pull
+              retry_on_fail proc { 
+                self.pull
+              }
             end
           else
             logger.debug("[#{self.git_config.id}] Repo URL seems to have changed... deleting the old directory and cloning again")
             self.clear_directory
-            self.clone
+            retry_on_fail proc { 
+              self.clone
+            }
           end
         else
           self.clear_directory
           logger.debug("Cloning #{self.git_config.git_url} into #{self.git_config.local_repo_path} after clearing directory")
-          self.clone
+          retry_on_fail proc { 
+            self.clone
+          }
         end
       else
         logger.debug("Cloning #{self.git_config.git_url} into #{self.git_config.local_repo_path}")
-        self.clone
+        retry_on_fail proc { 
+          self.clone
+        }
 
         # now that we've cloned, we can setup the @_git variable
         @_git = Git.open(self.git_config.local_repo_path)
@@ -291,7 +303,9 @@ module FastlaneCI
       git_action_with_queue(ensure_block: proc { unset_auth }) do
         logger.info("Starting pull #{self.git_config.git_url}")
         self.setup_auth(repo_auth: repo_auth)
-        git.pull
+        retry_on_fail proc { 
+          git.pull
+        }
         logger.debug("Done pulling #{self.git_config.git_url}")
       end
     end
@@ -327,8 +341,22 @@ module FastlaneCI
         self.setup_author(full_name: repo_auth.full_name, username: repo_auth.username)
         self.temporary_storage_path = self.setup_auth(repo_auth: repo_auth)
         # TODO: how do we handle branches
-        self.git.push
+        retry_on_fail proc { 
+          raise "This blew up"
+          self.git.push 
+        }
+
         logger.debug("Done pushing to #{self.git_config.git_url}")
+      end
+    end
+
+    def retry_on_fail(recovery_block: nil, &might_fail_block)
+      begin
+        might_fail_block.call
+
+      rescue StandardError => ex
+        logger.error(ex.to_s)
+        recovery_block.call unless recovery_block.nil?
       end
     end
 
@@ -357,7 +385,10 @@ module FastlaneCI
       git_action_with_queue(ensure_block: proc { unset_auth }) do
         logger.debug("Starting fetch #{self.git_config.git_url}".freeze)
         self.temporary_storage_path = self.setup_auth(repo_auth: repo_auth)
-        self.git.fetch
+        retry_on_fail proc { 
+          raise "Boom"
+          self.git.fetch
+        }
         logger.debug("Done fetching #{self.git_config.git_url}".freeze)
       end
     end
@@ -405,9 +436,12 @@ module FastlaneCI
 
       self.temporary_storage_path = self.setup_auth(repo_auth: repo_auth)
       logger.debug("[#{self.git_config.id}]: Cloning git repo #{self.git_config.git_url}")
-      Git.clone(self.git_config.git_url, self.git_config.id,
-                path: self.git_config.containing_path,
-                recursive: true)
+      retry_on_fail proc { 
+        raise "boom"
+        Git.clone(self.git_config.git_url, self.git_config.id,
+                  path: self.git_config.containing_path,
+                  recursive: true)
+      }
     end
   end
 end
